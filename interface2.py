@@ -13,6 +13,8 @@ import ttkbootstrap as ttk
 from PIL import Image
 import io
 from scipy.ndimage import zoom
+from scipy.ndimage import label
+
 
 
 # ======================================================================================================================
@@ -55,11 +57,14 @@ def load_h5_model(file_path):
 canvas = None
 slider = None
 button_segment = None
+segmented_canvas = None
 
+    
 def browseFiles():
     global canvas  
     global slider
     global button_segment
+    global segmented_canvas
 
     filename = filedialog.askopenfilename(initialdir = "/", 
                                           title = "Select a File", 
@@ -69,8 +74,17 @@ def browseFiles():
    
     label_file.configure(text="File Opened: " + filename)
     
+    # Delete the original image canvas if it exists
+    if canvas is not None:
+        canvas.get_tk_widget().destroy()
+
+    # Delete the segmented image canvas if it exists
+    if segmented_canvas is not None:
+        segmented_canvas.get_tk_widget().destroy()
+    
     def segment_slice():
-        global canvas
+        global segmented_canvas
+
         model = load_h5_model('UNet_wavelet_fusion_150epoch_model_12.h5')
         
         slice_index = slider.get()
@@ -81,51 +95,39 @@ def browseFiles():
         segmentation = model.predict(slice_to_segment[None, ..., None])
         resized_segmentation = zoom(segmentation[0, :, :, 0], (original_size[0] / segmentation.shape[1], original_size[1] / segmentation.shape[2]))
 
-         # Get the dimensions of original_image_frame
+        # Apply a threshold to the mask
+        threshold = 0.5  # Adjust this value based on your needs
+        resized_segmentation = (resized_segmentation > threshold).astype(int)
+
+        # Quantify the number of lesions
+        labeled_array, num_features = label(resized_segmentation)
+        print(f"Number of lesions: {num_features}")
+        print(f"Lesion sizes: {np.bincount(labeled_array.flat)}")
+
+        # Get the dimensions of segmented_image_frame
         frame_width = segmented_image_frame.winfo_width()
         frame_height = segmented_image_frame.winfo_height()
 
         # Calculate the required dpi for the figure
         dpi = min(frame_width / 4, frame_height / 4)
         
-        # Clear previous canvas
-        if canvas is not None:
-            canvas.get_tk_widget().destroy()
-            
-        # Remove the old slider
-        if slider is not None:
-            slider.pack_forget()
-
-                    
-         # Load the image
-        img = nib.load(filename)
-        data = img.get_fdata()
-        
-        # Display the original image
-        fig, ax = plt.subplots(figsize=[4, 4], dpi=dpi)
-        ax.axis('off')
-
-        # Plot the first slice
-        slice_ = data[:, :, 0]
-        im = ax.imshow(slice_, cmap="gray", origin="lower")
-        ax.axis('off')
-        
-        # Create a canvas and add it to the window
-        canvas = FigureCanvasTkAgg(fig, master=original_image_frame)
-        canvas.draw()
-        # display the canvas on the left side of the window
-        canvas.get_tk_widget().grid(sticky='nsew')
-        
         # Display the segmentation
         fig, ax = plt.subplots( figsize=[4, 4], dpi=dpi)
         ax.imshow(resized_segmentation, cmap="gray", origin="lower")
         ax.axis('off')
-        canvas = FigureCanvasTkAgg(fig, master=segmented_image_frame)
-        canvas.draw()
-        canvas.get_tk_widget().grid(sticky='nsew')
-        return resized_segmentation
-    
         
+        # If segmented_canvas already exists, destroy it before creating a new one
+        if segmented_canvas is not None:
+            segmented_canvas.get_tk_widget().destroy()
+
+        # Create a new canvas to display the segmented image
+        segmented_canvas = FigureCanvasTkAgg(fig, master=segmented_image_frame)
+        segmented_canvas.draw()
+        segmented_canvas.get_tk_widget().grid(sticky='nsew')
+        number_of_lesions = num_features
+        number_of_lesions_label = Label(actions_frame, text=f"Number of lesions: {number_of_lesions}")
+        number_of_lesions_label.grid(row=4, column=0, sticky='n')
+    
     # Load the image
     img = nib.load(filename)
     data = img.get_fdata()
@@ -168,23 +170,24 @@ def browseFiles():
     im = ax.imshow(slice, cmap="gray", origin="lower")
     ax.axis('off')
 
-    # Clear the previous image from the canvas
-    if canvas is not None:
-        canvas.get_tk_widget().pack_forget()
-
     # Create a canvas and add it to the window
     canvas = FigureCanvasTkAgg(fig, master=original_image_frame)
     canvas.draw()
     # display the canvas on the left side of the window
     canvas.get_tk_widget().grid(sticky='nsew')
     
-    
-    
+
+
+
 def update_slice(s, data, im):
     # Update the displayed slice
-    slice = data[:, :,int(s)]
-    im.set_data(slice)
-    plt.draw()
+    # slice = data[:, :, int(s)]
+    # im.set_data(slice)
+    # plt.draw()
+    slice_index = int(s)
+    slice_data = data[:, :, slice_index]
+    im.set_data(slice_data)
+    canvas.draw() 
 
 
 
@@ -225,7 +228,7 @@ actions_frame.rowconfigure(0, weight=1)
 actions_frame.rowconfigure(1, weight=1)
 actions_frame.rowconfigure(2, weight=1)
 actions_frame.rowconfigure(3, weight=1)
-# Stop actions_frame from resizing to fit its contents
+actions_frame.rowconfigure(4, weight=1)
 actions_frame.grid_propagate(False)
 
 label_file = Label(actions_frame,

@@ -58,6 +58,9 @@ canvas = None
 slider = None
 button_segment = None
 segmented_canvas = None
+button_overlay = None
+
+
 
     
 def browseFiles():
@@ -65,6 +68,7 @@ def browseFiles():
     global slider
     global button_segment
     global segmented_canvas
+    global button_overlay
 
     filename = filedialog.askopenfilename(initialdir = "/", 
                                           title = "Select a File", 
@@ -84,6 +88,8 @@ def browseFiles():
     
     def segment_slice():
         global segmented_canvas
+        global button_overlay
+            
 
         model = load_h5_model('UNet_wavelet_fusion_150epoch_model_12.h5')
         
@@ -127,7 +133,32 @@ def browseFiles():
         number_of_lesions = num_features
         number_of_lesions_label = Label(actions_frame, text=f"Number of lesions: {number_of_lesions}")
         number_of_lesions_label.grid(row=4, column=0, sticky='n')
-    
+        def overlay_images():
+            # Create a new Tkinter window
+            new_window = Toplevel(window)
+            new_window.title("Overlay Image")
+
+            # Create a new FigureCanvasTkAgg in the new window
+            fig, ax = plt.subplots(figsize=[6, 6])
+            canvas = FigureCanvasTkAgg(fig, master=new_window)
+            canvas.draw()
+            canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
+
+            # Overlay the segmentation in red over the original slice
+            original_slice = data[:, :, slice_index]
+            ax.imshow(original_slice, cmap='gray', origin='lower')
+            ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
+            ax.axis("off")
+            # Update the canvas
+            canvas.draw()
+        if button_overlay is None:
+            button_overlay = Button(actions_frame, 
+                                text="Overlay Images",
+                                command=overlay_images) 
+            button_overlay.grid(row=5, column=0, sticky='n')
+        else:
+            button_overlay.configure(command=overlay_images)
+            
     # Load the image
     img = nib.load(filename)
     data = img.get_fdata()

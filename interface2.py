@@ -58,6 +58,8 @@ canvas = None
 slider = None
 button_segment = None
 segmented_canvas = None
+button_overlay = None
+
 
     
 def browseFiles():
@@ -65,6 +67,7 @@ def browseFiles():
     global slider
     global button_segment
     global segmented_canvas
+    global button_overlay
 
     filename = filedialog.askopenfilename(initialdir = "/", 
                                           title = "Select a File", 
@@ -81,7 +84,21 @@ def browseFiles():
     # Delete the segmented image canvas if it exists
     if segmented_canvas is not None:
         segmented_canvas.get_tk_widget().destroy()
-    
+        
+    def overlay_segmentation(original_slice, segmented_image):
+        # Convert the segmented image to RGB and set red channel to segmented image
+        segmented_rgb = np.zeros_like(original_slice, dtype=np.uint8)
+        segmented_rgb[:, :, 0] = segmented_image * 255
+
+        # Blend the original slice and segmented image
+        alpha = 0.5  # Adjust the blending factor as needed
+        overlay = cv2.addWeighted(original_slice, alpha, segmented_rgb, 1 - alpha, 0)
+
+        # Create a new window for displaying the overlay image
+        cv2.imshow('Segmentation Overlay', overlay)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        
     def segment_slice():
         global segmented_canvas
 
@@ -103,6 +120,13 @@ def browseFiles():
         labeled_array, num_features = label(resized_segmentation)
         print(f"Number of lesions: {num_features}")
         print(f"Lesion sizes: {np.bincount(labeled_array.flat)}")
+        
+        # Overlay segmentation on the original slice and display in popup window
+        original_slice = data[:, :, slice_index].astype(np.uint8)
+        overlay_segmentation(original_slice, resized_segmentation)
+
+        # Display the segmented image in the tkinter window
+        # display_segmented_image(resized_segmentation, num_features)
 
         # Get the dimensions of segmented_image_frame
         frame_width = segmented_image_frame.winfo_width()

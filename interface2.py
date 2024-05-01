@@ -14,6 +14,7 @@ from PIL import Image
 import io
 from scipy.ndimage import zoom
 from scipy.ndimage import label
+import sv_ttk
 
 
 
@@ -61,7 +62,6 @@ segmented_canvas = None
 button_overlay = None
 
 
-
     
 def browseFiles():
     global canvas  
@@ -78,14 +78,13 @@ def browseFiles():
    
     label_file.configure(text="File Opened: " + filename)
     
-    # Delete the original image canvas if it exists
     if canvas is not None:
         canvas.get_tk_widget().destroy()
 
-    # Delete the segmented image canvas if it exists
     if segmented_canvas is not None:
         segmented_canvas.get_tk_widget().destroy()
     
+    # --------------------------------------------------------------------------------------------
     def segment_slice():
         global segmented_canvas
         global button_overlay
@@ -101,56 +100,47 @@ def browseFiles():
         segmentation = model.predict(slice_to_segment[None, ..., None])
         resized_segmentation = zoom(segmentation[0, :, :, 0], (original_size[0] / segmentation.shape[1], original_size[1] / segmentation.shape[2]))
 
-        # Apply a threshold to the mask
-        threshold = 0.5  # Adjust this value based on your needs
+        threshold = 0.5  
         resized_segmentation = (resized_segmentation > threshold).astype(int)
 
-        # Quantify the number of lesions
         labeled_array, num_features = label(resized_segmentation)
         print(f"Number of lesions: {num_features}")
         print(f"Lesion sizes: {np.bincount(labeled_array.flat)}")
 
-        # Get the dimensions of segmented_image_frame
         frame_width = segmented_image_frame.winfo_width()
         frame_height = segmented_image_frame.winfo_height()
 
-        # Calculate the required dpi for the figure
         dpi = min(frame_width / 4, frame_height / 4)
         
-        # Display the segmentation
         fig, ax = plt.subplots( figsize=[4, 4], dpi=dpi)
         ax.imshow(resized_segmentation, cmap="gray", origin="lower")
         ax.axis('off')
         
-        # If segmented_canvas already exists, destroy it before creating a new one
         if segmented_canvas is not None:
             segmented_canvas.get_tk_widget().destroy()
 
-        # Create a new canvas to display the segmented image
         segmented_canvas = FigureCanvasTkAgg(fig, master=segmented_image_frame)
         segmented_canvas.draw()
         segmented_canvas.get_tk_widget().grid(sticky='nsew')
         number_of_lesions = num_features
         number_of_lesions_label = Label(actions_frame, text=f"Number of lesions: {number_of_lesions}")
         number_of_lesions_label.grid(row=4, column=0, sticky='n')
+        # --------------------------------------------------------------------------------------------
         def overlay_images():
-            # Create a new Tkinter window
             new_window = Toplevel(window)
             new_window.title("Overlay Image")
 
-            # Create a new FigureCanvasTkAgg in the new window
             fig, ax = plt.subplots(figsize=[6, 6])
             canvas = FigureCanvasTkAgg(fig, master=new_window)
             canvas.draw()
             canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
-            # Overlay the segmentation in red over the original slice
             original_slice = data[:, :, slice_index]
             ax.imshow(original_slice, cmap='gray', origin='lower')
             ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
             ax.axis("off")
-            # Update the canvas
             canvas.draw()
+        # --------------------------------------------------------------------------------------------
         if button_overlay is None:
             button_overlay = Button(actions_frame, 
                                 text="Overlay Images",
@@ -158,6 +148,7 @@ def browseFiles():
             button_overlay.grid(row=5, column=0, sticky='n')
         else:
             button_overlay.configure(command=overlay_images)
+    # --------------------------------------------------------------------------------------------
             
     # Load the image
     img = nib.load(filename)
@@ -207,7 +198,7 @@ def browseFiles():
     # display the canvas on the left side of the window
     canvas.get_tk_widget().grid(sticky='nsew')
     
-
+# ======================================================================================================================
 
 
 def update_slice(s, data, im):
@@ -220,6 +211,7 @@ def update_slice(s, data, im):
     im.set_data(slice_data)
     canvas.draw() 
 
+# ======================================================================================================================
 
 
 
@@ -232,25 +224,30 @@ window = Tk()
 window.title("MS leisons Segmentation")
 window.state('zoomed')
 
+style = ttk.Style()
+style.configure("Custom.TFrame", background='#c4d7f8')
+
 window.rowconfigure(0, weight=3)
 window.rowconfigure(1, weight=20)
 window.columnconfigure(0, weight=3)
 window.columnconfigure(1, weight=8)
 window.columnconfigure(2, weight=8)
 
+window.configure(bg='#c4d7f8') 
 
+main_label_frame = ttk.Frame(window, relief='solid', borderwidth=1)
+main_label_frame.grid(row=0, column=0, columnspan=3, sticky='nsew')
+main_label = Label(main_label_frame, text="MS Leison segmenation", font=("Arial", 16, "bold"))
+main_label.pack(fill='both', expand=True)
 
-main_label = Label(window, text="MS Leison segmenation", font=("Arial", 16), relief='raised')
-main_label.grid(row=0, column=0, columnspan=3, sticky='nsew')
-
-actions_frame = Frame(window, relief='solid', borderwidth=1)
+actions_frame = ttk.Frame(window, relief='solid', borderwidth=1)
 actions_frame.grid(row=1, column=0, sticky='nsew', padx=10, pady=10)
 
-original_image_frame = Frame(window, relief='solid', borderwidth=1)
+original_image_frame = ttk.Frame(window, relief='solid', borderwidth=1)
 original_image_frame.grid(row=1, column=1, sticky='nsew', padx=10, pady=10)
 original_image_frame.grid_propagate(False)
 
-segmented_image_frame = Frame(window, relief='solid', borderwidth=1)
+segmented_image_frame = ttk.Frame(window, relief='solid', borderwidth=1)
 segmented_image_frame.grid(row=1, column=2, sticky='nsew', padx=10, pady=10)
 segmented_image_frame.grid_propagate(False)
 
@@ -260,6 +257,10 @@ actions_frame.rowconfigure(1, weight=1)
 actions_frame.rowconfigure(2, weight=1)
 actions_frame.rowconfigure(3, weight=1)
 actions_frame.rowconfigure(4, weight=1)
+actions_frame.rowconfigure(5, weight=1)
+actions_frame.rowconfigure(5, weight=10)
+
+
 actions_frame.grid_propagate(False)
 
 label_file = Label(actions_frame,
@@ -273,6 +274,9 @@ button_explore = Button(actions_frame,
                         text="Browse Files",
                         command=browseFiles) 
 button_explore.grid(row=1, column=0, sticky='n')
+
+# This is where the magic happens
+# sv_ttk.set_theme("light")
 
 window.protocol("WM_DELETE_WINDOW", exit)
 window.mainloop()

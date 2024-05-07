@@ -16,7 +16,7 @@
 ``` 
     git lfs pull
 ```
-5. Run the interface2.py file
+5. Run the interface3.py file
 ```
-    py interface2.py
+    py interface3.py
 ```

@@ -1,5 +1,7 @@
-from tkinter import *
+# from tkinter import *
 from tkinter import filedialog
+import customtkinter as ctk
+
 import nibabel as nib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -15,9 +17,7 @@ import io
 from scipy.ndimage import zoom
 from scipy.ndimage import label
 import sv_ttk
-
-
-
+from PIL import Image
 # ======================================================================================================================
 def nifti_slice_to_png(nifti_file, slice_index):
     nifti_img = nib.load(nifti_file)
@@ -76,8 +76,8 @@ def browseFiles():
                                           title = "Select a File", 
                                           filetypes = (("NIfTI files", "*.nii"),
                                                        ("GZipped NIfTI files", "*.nii.gz"),
+                                                       ("PNG files", "*.png"),
                                                        ("all files", "*.*")))
-   
     label_file.configure(text="File Opened: \n" + filename,  font=("Helvetica", 14))
     
     if canvas is not None:
@@ -85,8 +85,7 @@ def browseFiles():
 
     if segmented_canvas is not None:
         segmented_canvas.get_tk_widget().destroy()
-    
-    # --------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
     def segment_slice():
         global segmented_canvas
         global button_overlay
@@ -94,13 +93,32 @@ def browseFiles():
 
         model = load_h5_model('UNet_wavelet_fusion_150epoch_model_12.h5')
         
-        slice_index = slider.get()
-        original_size = slice.shape
-        slice_to_segment = read_image(nifti_slice_to_png(filename, slice_index))
-        slice_to_segment = np.expand_dims(slice_to_segment, axis=-1)
+        _, ext = os.path.splitext(filename)
+        if ext.lower() == '.png':
+            img = Image.open(filename)
+            original_size = np.array(img).shape
+            print('PNG Original size:', original_size)
+            # slice_to_segment = read_image(img)
+            img = img.convert('L').resize((128, 128))
+            img_array = np.array(img)
+            img_array = img_array.astype(np.float32)
+            img_array = img_array / 255.0
+            img_array = np.clip(img_array, 0, 1)
+            slice_to_segment = img_array
+            slice_to_segment = np.expand_dims(slice_to_segment, axis=-1)
 
-        segmentation = model.predict(slice_to_segment[None, ..., None])
-        resized_segmentation = zoom(segmentation[0, :, :, 0], (original_size[0] / segmentation.shape[1], original_size[1] / segmentation.shape[2]))
+            segmentation = model.predict(slice_to_segment[None, ..., None])
+            resized_segmentation =  zoom(segmentation[0, :, :, 0], (original_size[0] / segmentation.shape[1], original_size[1] / segmentation.shape[2]))
+            
+        else:
+            slice_index = int(slider.get())
+            original_size = slice.shape
+            slice_to_segment = read_image(nifti_slice_to_png(filename, slice_index))
+            
+            slice_to_segment = np.expand_dims(slice_to_segment, axis=-1)
+
+            segmentation = model.predict(slice_to_segment[None, ..., None])
+            resized_segmentation = zoom(segmentation[0, :, :, 0], (original_size[0] / segmentation.shape[1], original_size[1] / segmentation.shape[2]))
 
         threshold = 0.5  
         resized_segmentation = (resized_segmentation > threshold).astype(int)
@@ -118,6 +136,11 @@ def browseFiles():
         ax.imshow(resized_segmentation, cmap="gray", origin="lower")
         ax.axis('off')
         
+        # Adjust subplot parameters to remove white border      
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        # Set aspect ratio to equal
+        ax.set_aspect('equal')
+        
         if segmented_canvas is not None:
             segmented_canvas.get_tk_widget().destroy()
 
@@ -126,36 +149,60 @@ def browseFiles():
         segmented_canvas.get_tk_widget().grid(sticky='nsew')
         number_of_lesions = num_features
         # number_of_lesions_label = Label(actions_frame, text=f"Number of lesions: {number_of_lesions}")
-        number_of_lesions_label = Label(actions_frame, text=f"Number of lesions: {number_of_lesions}", font=("Helvetica", 16))
-        number_of_lesions_label.grid(row=6, column=0, sticky='n')
+        number_of_lesions_label = ctk.CTkLabel(segmented_image_frame, text=f"Number of lesions: {number_of_lesions}", font=("Helvetica", 20))
+        if number_of_lesions_label is not None:
+            number_of_lesions_label.pack_forget()
+        number_of_lesions_label.pack()
+        number_of_lesions_label.place(x=250, y=620,anchor='center')
         # --------------------------------------------------------------------------------------------
         def overlay_images():
-            new_window = Toplevel(window)
+            new_window = ctk.CTkToplevel(window)
             new_window.title("Overlay Image")
 
             fig, ax = plt.subplots(figsize=[6, 6])
             canvas = FigureCanvasTkAgg(fig, master=new_window)
             canvas.draw()
-            canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
+            canvas.get_tk_widget().pack(
+                # side='TOP', fill='both', 
+                expand=1)
 
-            original_slice = data[:, :, slice_index]
+            _, ext = os.path.splitext(filename)
+            if ext.lower() == '.png':
+                img = Image.open(filename)
+                original_slice = np.array(img)
+            else:
+                original_slice = data[:, :, slice_index]
+            # original_slice = data[:, :, slice_index]
+                
             ax.imshow(original_slice, cmap='gray', origin='lower')
             ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
             ax.axis("off")
+            # Adjust subplot parameters to remove white border
+            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            # Set aspect ratio to equal
+            ax.set_aspect('equal')
             canvas.draw()
         # --------------------------------------------------------------------------------------------
         if button_overlay is None:
-            button_overlay = Button(actions_frame, 
+            button_overlay = ctk.CTkButton(actions_frame, 
                                 text="Overlay Images",
                                 command=overlay_images) 
             button_overlay.grid(row=5, column=0, sticky='n')
+            button_overlay.place(x=150, y=500, anchor='center')
         else:
             button_overlay.configure(command=overlay_images)
-    # --------------------------------------------------------------------------------------------
-            
-    # Load the image
-    img = nib.load(filename)
-    data = img.get_fdata()
+# Load the image
+    _, ext = os.path.splitext(filename)
+    if ext.lower() == '.png':
+        img = Image.open(filename)
+        data = np.array(img)
+    else:
+        img = nib.load(filename)
+        data = img.get_fdata()
+
+
+    # img = nib.load(filename)
+    # data = img.get_fdata()
     
     print('Shape:', data.shape)
     print('Max:', data.max())
@@ -172,24 +219,37 @@ def browseFiles():
     # slider = Scale(actions_frame, from_=0, to=data.shape[2] - 1, orient=HORIZONTAL, command=lambda s: update_slice(s, data, im))
     # slider.grid(row=2, column=0, sticky='n')
     # Create a label to display the current slice index
-    slice_index_label = Label(actions_frame, text="Slice index: 0", font=("Helvetica", 16))
-    slice_index_label.grid(row=2, column=0, sticky='n')
+    
 
     # Modify the slider command to update the label text
-    slider = Scale(actions_frame, from_=0, to=data.shape[2] - 1, orient=HORIZONTAL, 
-                   command=lambda s: (update_slice(s, data, im), slice_index_label.configure(text=f"Slice index: {s}")))
-    slider.grid(row=3, column=0, sticky='n')
+    # slider = ctk.CTkSlider(actions_frame, from_=0, to=data.shape[2] - 1, 
+    #                        orient='horizontal', 
+    #                command=lambda s: (update_slice(s, data, im), slice_index_label.configure(text=f"Slice index: {s}")))
+    _, ext = os.path.splitext(filename)
+    if ext.lower() != '.png':
+        slice_index_label = ctk.CTkLabel(actions_frame, text="Slice index: 0", font=("Helvetica", 16))
+        slice_index_label.grid(row=2, column=0, sticky='n')
+        slice_index_label.place(x=150, y=300, anchor='center')
+        slider = ctk.CTkSlider(actions_frame, from_=0,
+                            to=data.shape[2] - 1, 
+                            number_of_steps=data.shape[2] - 1,
+                            command=lambda s: (update_slice(s, data, im), slice_index_label.configure(text=f"Slice index: {s}")))
+        slider.set(0)
+        slider.grid(row=3, column=0, sticky='n')
+        slider.place(x=150, y=350, anchor='center')
     
     # Remove the old segment button
     if button_segment is not None:
         button_segment.pack_forget()
     
-    button_segment = Button(actions_frame, 
-                        text="segment this slice",
+    button_segment = ctk.CTkButton(actions_frame, 
+                        text="segment this image",
                         command=segment_slice) 
     button_segment.grid(row=4, column=0, sticky='n')
+    button_segment.place(x=150, y=250, anchor='center')
     
-    
+    # Create a canvas and add it to the window
+    # display the canvas on the left side of the window
     # Get the dimensions of original_image_frame
     frame_width = original_image_frame.winfo_width()
     frame_height = original_image_frame.winfo_height()
@@ -205,16 +265,19 @@ def browseFiles():
     slice = data[:, :, 0]
     im = ax.imshow(slice, cmap="gray", origin="lower")
     ax.axis('off')
+    
+    # Adjust subplot parameters to remove white border
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    # Set aspect ratio to equal
+    ax.set_aspect('equal')
 
-    # Create a canvas and add it to the window
+
     canvas = FigureCanvasTkAgg(fig, master=original_image_frame)
-    canvas.draw()
-    # display the canvas on the left side of the window
     canvas.get_tk_widget().grid(sticky='nsew')
+    canvas.draw()
+
     
 # ======================================================================================================================
-
-
 def update_slice(s, data, im):
     # Update the displayed slice
     # slice = data[:, :, int(s)]
@@ -225,43 +288,74 @@ def update_slice(s, data, im):
     im.set_data(slice_data)
     canvas.draw() 
 
+
+
 # ======================================================================================================================
-
-
-
-    # ======================================================================================================================
-    # Create the window an layout
-    # ======================================================================================================================
-
-window = Tk()
+# Create the window an layout
+# ======================================================================================================================
+window = ctk.CTk()
 
 window.title("MS leisons Segmentation")
-window.state('zoomed')
+window.after(0, lambda:window.state('zoomed')) 
+# window.state('zoomed')
 
-style = ttk.Style()
-style.configure("Custom.TFrame", background='#c4d7f8')
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
 
 window.rowconfigure(0, weight=3)
 window.rowconfigure(1, weight=20)
 window.columnconfigure(0, weight=3)
-window.columnconfigure(1, weight=8)
-window.columnconfigure(2, weight=8)
+window.columnconfigure(1, weight=9)
+window.columnconfigure(2, weight=9)
 
-window.configure(bg='#c4d7f8') 
 
-main_label_frame = ttk.Frame(window, relief='solid', borderwidth=1)
+
+
+
+
+main_label_frame = ctk.CTkFrame(window, border_width=1)
 main_label_frame.grid(row=0, column=0, columnspan=3, sticky='nsew')
-main_label = Label(main_label_frame, text="MS Leison segmenation",  font=("Helvetica", 18,"bold"))
+main_label = ctk.CTkLabel(main_label_frame, text="SEP Detect Interface",  font=("Helvetica", 28,"bold"))
 main_label.pack(fill='both', expand=True)
 
-actions_frame = ttk.Frame(window, relief='solid', borderwidth=1)
-actions_frame.grid(row=1, column=0, sticky='nsew', padx=10, pady=10)
+light_image = Image.open("CDTA Logo white.png")
+dark_image = Image.open("CDTA Logo white.png")
+cdta_logo = ctk.CTkImage(light_image=light_image, 
+                         dark_image=dark_image, 
+                         size=(150, 30))
+cdta_logo = ctk.CTkLabel(main_label_frame, image=cdta_logo, text="")
+cdta_logo.pack(side='left')
+cdta_logo.place(x=10, y=30, anchor='nw')
 
-original_image_frame = ttk.Frame(window, relief='solid', borderwidth=1)
+light_image = Image.open("AC2_Logo_NEW white.png")
+dark_image = Image.open("AC2_Logo_NEW white.png")
+cdta_logo = ctk.CTkImage(light_image=light_image, 
+                         dark_image=dark_image, 
+                         size=(65, 95))
+cdta_logo = ctk.CTkLabel(main_label_frame, image=cdta_logo, text="")
+cdta_logo.pack(side='left')
+cdta_logo.place(x=170, y=5, anchor='nw')
+
+light_image = Image.open("esi-logo-white.png")
+dark_image = Image.open("esi-logo-white.png")
+cdta_logo = ctk.CTkImage(light_image=light_image, 
+                         dark_image=dark_image, 
+                         size=(100, 100))
+cdta_logo = ctk.CTkLabel(main_label_frame, image=cdta_logo, text="")
+cdta_logo.pack(side='right')
+cdta_logo.place(x=1420, y=5, anchor='nw')
+
+actions_frame = ctk.CTkFrame(window, border_width=1)
+actions_frame.grid(row=1, column=0, sticky='nsew', padx=10, pady=10)
+actions_frame.grid_propagate(False)
+
+
+original_image_frame = ctk.CTkFrame(window, border_width=1)
 original_image_frame.grid(row=1, column=1, sticky='nsew', padx=10, pady=10)
 original_image_frame.grid_propagate(False)
 
-segmented_image_frame = ttk.Frame(window, relief='solid', borderwidth=1)
+segmented_image_frame = ctk.CTkFrame(window, border_width=1)
 segmented_image_frame.grid(row=1, column=2, sticky='nsew', padx=10, pady=10)
 segmented_image_frame.grid_propagate(False)
 
@@ -278,18 +372,21 @@ actions_frame.rowconfigure(7, weight=10)
 
 actions_frame.grid_propagate(False)
 
-label_file = ttk.Label(actions_frame,
+label_file = ctk.CTkLabel(actions_frame,
                     text = "Select a file",
                     wraplength=200,
                     font=("Helvetica", 14),
                     justify='center'
                     )
-label_file.grid(row=0, column=0, sticky='new')
+label_file.grid(row=0, column=0, sticky='ew', pady=10)
+label_file.place(x=150, y=90, anchor='center')
 
-button_explore = Button(actions_frame, 
+button_explore = ctk.CTkButton(actions_frame, 
                         text="Browse Files",
-                        command=browseFiles) 
+                        command=browseFiles
+                        ) 
 button_explore.grid(row=1, column=0, sticky='n')
+button_explore.place(x=150, y=150, anchor='center')
 
 # This is where the magic happens
 # sv_ttk.set_theme("light")

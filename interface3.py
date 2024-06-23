@@ -60,7 +60,11 @@ slider = None
 button_segment = None
 segmented_canvas = None
 button_overlay = None
+button_download_overlay = None
+button_download_segmentation = None
 slice_index_label = None
+button_compare = None
+
 
 
     
@@ -70,7 +74,10 @@ def browseFiles():
     global button_segment
     global segmented_canvas
     global button_overlay
+    global button_download_overlay
+    global button_download_segmentation
     global slice_index_label
+    global button_compare
 
     filename = filedialog.askopenfilename(initialdir = "/", 
                                           title = "Select a File", 
@@ -89,6 +96,9 @@ def browseFiles():
     def segment_slice():
         global segmented_canvas
         global button_overlay
+        global button_download_overlay
+        global button_download_segmentation
+        global button_compare
             
 
         model = load_h5_model('UNet_wavelet_fusion_150epoch_model_12.h5')
@@ -154,8 +164,28 @@ def browseFiles():
             number_of_lesions_label.pack_forget()
         number_of_lesions_label.pack()
         number_of_lesions_label.place(x=250, y=620,anchor='center')
+        def download_segmented():
+            base_filename = os.path.splitext(os.path.basename(filename))[0]
+            save_filename = f"{base_filename}_slice_{slice_index}_segmented.png"
+            save_path = filedialog.asksaveasfilename(defaultextension=".png",
+                                                     initialfile=save_filename,
+                                                     filetypes=[("PNG files", "*.png"), ("All files", "*.*")])
+            if save_path:
+                # Save the segmentation as an image
+                Image.fromarray((resized_segmentation * 255).astype(np.uint8)).save(save_path)
+                print(f"Segmented image saved to {save_path}")
+        
+        if button_download_segmentation is None:
+            button_download_segmentation = ctk.CTkButton(actions_frame,
+                                                    text="Download Segmented Image",
+                                                    command=download_segmented)
+            button_download_segmentation.grid(row=4, column=0, sticky='n')
+            button_download_segmentation.place(x=150, y=400, anchor='center')
+        else:
+            button_download_segmentation.configure(command=download_segmented)
         # --------------------------------------------------------------------------------------------
         def overlay_images():
+            global button_download_overlay
             new_window = ctk.CTkToplevel(window)
             new_window.title("Overlay Image")
 
@@ -173,24 +203,122 @@ def browseFiles():
             else:
                 original_slice = data[:, :, slice_index]
             # original_slice = data[:, :, slice_index]
-                
+            
             ax.imshow(original_slice, cmap='gray', origin='lower')
-            ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
+            # Assuming resized_segmentation is your image array
+            # Step 1: Create a binary mask
+            binary_mask = resized_segmentation == resized_segmentation.max()
+
+            # Step 2: Create a custom RGBA image
+            # Initialize an empty RGBA image with the same shape as your mask but with an extra dimension for color
+            rgba_image = np.zeros((*binary_mask.shape, 4))
+
+            # Set red color (1, 0, 0) and full opacity (1) for the white pixels
+            rgba_image[binary_mask] = [1, 0, 0, 1]
+
+            # Black pixels remain transparent because the default value is [0, 0, 0, 0]
+
+            # Step 3: Display the RGBA image
+            ax.imshow(rgba_image, origin='lower')
+            # ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
             ax.axis("off")
             # Adjust subplot parameters to remove white border
             plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
             # Set aspect ratio to equal
             ax.set_aspect('equal')
             canvas.draw()
+            
+            
+            def download_overlay():
+                base_filename = os.path.splitext(os.path.basename(filename))[0]
+                save_filename = f"{base_filename}_slice_{slice_index}_overlayedSegmentation.png"
+                save_path = filedialog.asksaveasfilename(defaultextension=".png",
+                                                         initialfile=save_filename,
+                                                         filetypes=[("PNG files", "*.png"), ("All files", "*.*")])
+                if save_path:
+                    fig.savefig(save_path, bbox_inches='tight', pad_inches=0)
+                    print(f"Overlay image saved to {save_path}")
+                    
+            if button_download_overlay is None:
+                button_download_overlay = ctk.CTkButton(actions_frame,
+                                                        text="Download Overlayed Image",
+                                                        command=download_overlay)
+                button_download_overlay.grid(row=6, column=0, sticky='n')
+                button_download_overlay.place(x=150, y=500, anchor='center')
+            else:
+                button_download_overlay.configure(command=download_overlay)
+
         # --------------------------------------------------------------------------------------------
         if button_overlay is None:
             button_overlay = ctk.CTkButton(actions_frame, 
                                 text="Overlay Images",
                                 command=overlay_images) 
             button_overlay.grid(row=5, column=0, sticky='n')
-            button_overlay.place(x=150, y=500, anchor='center')
+            button_overlay.place(x=150, y=450, anchor='center')
         else:
             button_overlay.configure(command=overlay_images)
+            
+        def compare_with_old():
+            # load an image 
+            filename_old = filedialog.askopenfilename(initialdir = "/", 
+                                          title = "Select a File", 
+                                          filetypes = (("PNG files", "*.png"),
+                                                       ("all files", "*.*")))
+            
+            # display the semnetation of the old image and the new image on top of each other
+            new_window = ctk.CTkToplevel(window)
+            new_window.title("comapre Images")
+            fig, ax = plt.subplots(figsize=[6, 6])
+            canvas = FigureCanvasTkAgg(fig, master=new_window)
+            canvas.draw()
+            canvas.get_tk_widget().pack(
+                # side='TOP', fill='both', 
+                expand=1)
+            
+            _, ext = os.path.splitext(filename_old)
+            
+            old_slice_img = Image.open(filename_old)
+            # Resize the image to match 'resized_segmentation' dimensions
+            resized_old_slice_img = old_slice_img.resize((resized_segmentation.shape[1], resized_segmentation.shape[0]))
+
+            # Optionally, convert the resized image to a NumPy array if you need to process it further
+            resized_old_slice = np.array(resized_old_slice_img)
+            ax.imshow(resized_old_slice, cmap='gray', origin='lower')
+            
+            # Step 1: Create a binary mask
+            binary_mask = resized_segmentation == resized_segmentation.max()
+
+            # Step 2: Create a custom RGBA image
+            # Initialize an empty RGBA image with the same shape as your mask but with an extra dimension for color
+            rgba_image = np.zeros((*binary_mask.shape, 4))
+
+            # Set red color (1, 0, 0) and full opacity (1) for the white pixels
+            rgba_image[binary_mask] = [0, 1, 0, 0.5]
+
+            # Black pixels remain transparent because the default value is [0, 0, 0, 0]
+
+            # Step 3: Display the RGBA image
+            ax.imshow(rgba_image, origin='lower')
+            # ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
+            ax.axis("off")
+            # Adjust subplot parameters to remove white border
+            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            # Set aspect ratio to equal
+            ax.set_aspect('equal')
+            canvas.draw()
+            
+        if button_compare is None:
+            button_compare = ctk.CTkButton(actions_frame, 
+                                text="Compare with old",
+                                command=compare_with_old) 
+            button_compare.grid(row=7, column=0, sticky='n')
+            button_compare.place(x=150, y=650, anchor='center')
+        else:
+            button_compare.configure(command=compare_with_old)
+            
+            
+            
+            
 # Load the image
     _, ext = os.path.splitext(filename)
     if ext.lower() == '.png':

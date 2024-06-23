@@ -1,0 +1,10 @@
+customtkinter
+nibabel
+matplotlib
+tensorflow
+numpy
+opencv-python
+h5py
+ttkbootstrap
+Pillow
+scipy

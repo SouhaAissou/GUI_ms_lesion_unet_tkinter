@@ -16,7 +16,7 @@ from PIL import Image
 import io
 from scipy.ndimage import zoom
 from scipy.ndimage import label
-import sv_ttk
+# import sv_ttk
 from PIL import Image
 # ======================================================================================================================
 def nifti_slice_to_png(nifti_file, slice_index):

@@ -261,30 +261,29 @@ def browseFiles():
         def compare_with_old():
             # load an image 
             filename_old = filedialog.askopenfilename(initialdir = "/", 
-                                          title = "Select a File", 
-                                          filetypes = (("PNG files", "*.png"),
-                                                       ("all files", "*.*")))
-            
-            # display the semnetation of the old image and the new image on top of each other
+                                                    title = "Select a File", 
+                                                    filetypes = (("PNG files", "*.png"),
+                                                                ("all files", "*.*")))
+
+            # display the segmentation of the old image and the new image on top of each other
             new_window = ctk.CTkToplevel(window)
-            new_window.title("comapre Images")
+            new_window.title("Compare Images")
             fig, ax = plt.subplots(figsize=[6, 6])
             canvas = FigureCanvasTkAgg(fig, master=new_window)
             canvas.draw()
-            canvas.get_tk_widget().pack(
-                # side='TOP', fill='both', 
-                expand=1)
-            
-            _, ext = os.path.splitext(filename_old)
+            canvas.get_tk_widget().pack(expand=1)
             
             old_slice_img = Image.open(filename_old)
             # Resize the image to match 'resized_segmentation' dimensions
             resized_old_slice_img = old_slice_img.resize((resized_segmentation.shape[1], resized_segmentation.shape[0]))
 
-            # Optionally, convert the resized image to a NumPy array if you need to process it further
-            resized_old_slice = np.array(resized_old_slice_img)
-            ax.imshow(resized_old_slice, cmap='gray', origin='lower')
-            
+            # Flip the image vertically to correct the orientation
+            flipped_old_slice_img = resized_old_slice_img.transpose(Image.FLIP_TOP_BOTTOM)
+
+            # Optionally, convert the resized and flipped image to a NumPy array if you need to process it further
+            resized_old_slice = np.array(flipped_old_slice_img)
+            ax.imshow(resized_old_slice, cmap='gray', origin='lower')  # Set origin to 'lower'
+
             # Step 1: Create a binary mask
             binary_mask = resized_segmentation == resized_segmentation.max()
 
@@ -292,27 +291,28 @@ def browseFiles():
             # Initialize an empty RGBA image with the same shape as your mask but with an extra dimension for color
             rgba_image = np.zeros((*binary_mask.shape, 4))
 
-            # Set red color (1, 0, 0) and full opacity (1) for the white pixels
+            # Set green color (0, 1, 0) and full opacity (0.5) for the white pixels
             rgba_image[binary_mask] = [0, 1, 0, 0.5]
 
             # Black pixels remain transparent because the default value is [0, 0, 0, 0]
 
             # Step 3: Display the RGBA image
-            ax.imshow(rgba_image, origin='lower')
-            # ax.imshow(resized_segmentation, cmap='Reds', alpha=0.3, origin='lower')
+            ax.imshow(rgba_image, origin='lower')  # Set origin to 'lower'
             ax.axis("off")
+
             # Adjust subplot parameters to remove white border
             plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
             # Set aspect ratio to equal
             ax.set_aspect('equal')
             canvas.draw()
+
             
         if button_compare is None:
             button_compare = ctk.CTkButton(actions_frame, 
                                 text="Compare with old",
                                 command=compare_with_old) 
             button_compare.grid(row=7, column=0, sticky='n')
-            button_compare.place(x=150, y=650, anchor='center')
+            button_compare.place(x=150, y=600, anchor='center')
         else:
             button_compare.configure(command=compare_with_old)
             

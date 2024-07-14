@@ -1,6 +1,7 @@
 # GUI for the unet model + wavelet fusion 
 
 ## how to use it:
+you must first have git
 
 1. Install Git LFS on your machine. you can download it from the [Git LFS website](https://git-lfs.com/).
 
